@@ -16,8 +16,9 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use tower_http::limit::RequestBodyLimitLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use uuid::Uuid;
 
-const SYSTEM_PROMPT: &str = "You are an agentic RAG (Retrieval-Augmented Generation) system built with Rust (Axum, SQLite). 'RAG' stands for Retrieval-Augmented Generation. This system features semantic chunking and a hybrid search engine. You MUST use the search_documents tool to look up information before answering ANY question. If a question is about the system itself, use this background info. If a question has multiple parts, perform multiple separate searches. After receiving tool results, synthesize a concise and highly accurate answer using ONLY the retrieved context. Do not waste tokens on filler; be extremely precise.";
+const SYSTEM_PROMPT: &str = "You are an agentic RAG (Retrieval-Augmented Generation) system built with Rust (Axum, SQLite). 'RAG' stands for Retrieval-Augmented Generation. This system features semantic chunking and a hybrid search engine. You MUST use the search_documents tool to look up information before answering ANY question. If a question is about the system itself, use this background info. If a question has multiple parts, perform multiple separate searches. When searching for specific sections or identifiers (e.g., '2c', '1a'), use ONLY the identifier as the search query rather than the whole question. After receiving tool results, synthesize a concise and highly accurate answer using ONLY the retrieved context. Do not waste tokens on filler; be extremely precise.";
 const PRIMARY_MODEL: &str = "llama-3.3-70b-versatile";
 const FALLBACK_MODEL: &str = "llama-4-scout-17b-instruct";
 
@@ -828,6 +829,28 @@ async fn chat(
                 }
             }
         } else if let Some(content) = assistant_msg.content {
+            // Phase 10: Universal Tool Detection in Content
+            if let Some(caps) = tool_use_fallback_re.captures(&content) {
+                let extracted_query = &caps[1];
+                tracing::info!("Universal Fallback: Extracted tool call from content: {}", extracted_query);
+                
+                let query_embedding = match state.model.embed(extracted_query) {
+                    Ok(e) => e,
+                    Err(_) => vec![0.0; 384],
+                };
+                let context = retrieve_context(&state.db_pool, query_embedding, extracted_query).unwrap_or_default();
+                let context_str = context.join("\n---\n");
+                
+                messages.push(GroqMessage {
+                    role: "tool".to_string(),
+                    content: Some(context_str),
+                    tool_calls: None,
+                    // Synthesize a tool call ID since we don't have a real one
+                    tool_call_id: Some(format!("fallback_{}", Uuid::new_v4())),
+                });
+                continue; // Re-run to let the AI process the context
+            }
+
             let escaped_query = escape_html(&form.query);
             let escaped_content = escape_html(&content);
             let model_badge = if is_fallback { "Llama 4 (Fallback)" } else { "Llama 3.3" };
@@ -876,18 +899,33 @@ fn retrieve_context(
     })?;
 
     let query_lower = query_text.to_lowercase();
+    // Phase 9: Extract alphanumeric tokens for boosting (e.g., "2c", "1a")
+    let query_tokens: Vec<String> = query_lower
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .collect();
+
     let mut similarities: Vec<(String, f32)> = Vec::new();
 
     for row in rows {
         let (content, embedding) = row?;
+        let content_lower = content.to_lowercase();
         let semantic_similarity = cosine_similarity(&query_embedding, &embedding);
         
-        // Hybrid Search: Keyword Boosting
-        // If the query text (or a significant part of it) appears literally in the chunk, boost it.
+        // Hybrid Search: Token-Based Boosting
         let mut final_score = semantic_similarity;
-        if content.to_lowercase().contains(&query_lower) && query_lower.len() > 1 {
-            final_score += 0.5; // Significant boost for literal matches
-            tracing::debug!("Keyword boost applied (+0.5) for query '{}'", query_text);
+        
+        for token in &query_tokens {
+            if content_lower.contains(token) {
+                // If the token looks like a section identifier (short, has numbers/letters)
+                if token.len() <= 3 && token.chars().any(|c| c.is_numeric()) && token.chars().any(|c| c.is_alphabetic()) {
+                    final_score += 1.0; // Massive boost for specific section IDs
+                    tracing::debug!("Identifier boost (+1.0) for '{}' in chunk", token);
+                } else if query_lower.len() < 10 && content_lower.contains(&query_lower) {
+                    final_score += 0.5; // General boost for short literal matches
+                }
+            }
         }
 
         similarities.push((content, final_score));
@@ -902,11 +940,8 @@ fn retrieve_context(
     similarities.retain(|(_, score)| *score > 0.05);
     similarities.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
     
-    for (i, (content, score)) in similarities.iter().take(10).enumerate() {
-        tracing::debug!("Top result {}: score={:.4}, preview='{}'", i, score, &content[..content.len().min(80)]);
-    }
-
-    Ok(similarities.into_iter().take(10).map(|(c, _)| c).collect())
+    // Phase 9: Increase Top-K to 20
+    Ok(similarities.into_iter().take(20).map(|(c, _)| c).collect())
 }
 
 fn escape_html(s: &str) -> String {
