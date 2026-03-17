@@ -15,7 +15,6 @@ use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tower_http::limit::RequestBodyLimitLayer;
-use tower_http::services::ServeDir;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 const SYSTEM_PROMPT: &str = "You are an agentic RAG (Retrieval-Augmented Generation) system built with Rust (Axum, SQLite). 'RAG' stands for Retrieval-Augmented Generation. This system features semantic chunking and a hybrid search engine. You MUST use the search_documents tool to look up information before answering ANY question. If a question is about the system itself, use this background info. If a question has multiple parts, perform multiple separate searches. After receiving tool results, synthesize a concise and highly accurate answer using ONLY the retrieved context. Do not waste tokens on filler; be extremely precise.";
@@ -233,8 +232,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/chat", post(chat))
         .route("/files", get(get_files))
         .route("/clear", post(clear_index))
-        .with_state(state)
-        .nest_service("/static", ServeDir::new("static"));
+        .with_state(state);
 
     let port: u16 = std::env::var("PORT")
         .ok()

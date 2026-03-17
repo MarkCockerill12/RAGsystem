@@ -138,6 +138,14 @@
       </section>
     </main>
     
+    <!-- Footer -->
+    <footer class="p-4 border-t border-white/5 flex justify-center items-center">
+        <p class="text-[10px] text-gray-600 uppercase tracking-[0.2em]">
+            Active Engine: <span class="text-blue-500/50">{{ primary_model }}</span> &bull; 
+            Status: <span class="text-green-500/40 italic font-medium">Ready</span>
+        </p>
+    </footer>
+
     <script>
       const chatForm = document.querySelector('form[hx-post="/chat"]');
       const chatInput = chatForm.querySelector('input[name="query"]');

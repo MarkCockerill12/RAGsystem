@@ -33,7 +33,6 @@ WORKDIR /app
 # Copy the binary and required files
 COPY --from=builder /app/target/release/rag-server .
 COPY --from=builder /app/templates ./templates
-COPY --from=builder /app/static ./static
 COPY --from=builder /app/model ./model
 
 # Set environment variables
