@@ -28,21 +28,35 @@ This system is designed to handle the constraints of the **Groq Free Tier** grac
 3. **Daily Limits (TPD/RPD)**: Upon detecting a daily quota exhaustion, the system immediately switches to `llama-4-scout-17b-instruct` to maintain service continuity.
 4. **Gas Gauge Monitoring**: Real-time logging of `x-ratelimit-remaining` headers provides visibility into API consumption.
 
+## 🚀 Deployment & Demo
+
+### 🌐 Live Website
+
+You can access the hosted version of the system here: **[PLACEHOLDER: Enter your Render URL here]**
+
 ---
 
-## 🚀 Getting Started Locally
+## 💻 Getting Started Locally
 
-### 1. Prerequisites
+### 1. Clone the Repository
 
-- **Rust Toolchain**: [Install via rustup](https://rustup.rs/) (Ensure you have `cargo` and `rustc` stable).
+First, download the project to your local machine:
+
+```bash
+git clone https://github.com/MarkCockerill12/RAGsystem.git
+cd RAGsystem
+```
+
+### 2. Prerequisites
+
+- **Rust Toolchain**: [Install via rustup](https://rustup.rs/) (Ensure you have `cargo` and `rustc` 1.85+).
 - **Groq API Key**: Obtain a free-tier key from the [Groq Console](https://console.groq.com/).
 - **System Dependencies**:
   - **Windows**: Build tools for Visual Studio (C++ workload) are required for compiling certain dependencies like `rusqlite`.
   - **Linux**: `sudo apt-get install pkg-config libssl-dev build-essential`
   - **macOS**: `brew install openssl pkg-config`
-- **Environment**: A `.env` file in the root directory (see below).
 
-### 2. Configure Environment
+### 3. Configure Environment
 
 Create a `.env` file in the project root:
 
@@ -51,7 +65,7 @@ GROQ_API_KEY=gsk_your_key_here
 PORT=3000
 ```
 
-### 3. Launch the Application
+### 4. Launch the Application
 
 ```bash
 cargo run --release
