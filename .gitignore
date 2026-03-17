@@ -1,0 +1,6 @@
+/target/
+/.env
+/rag.db
+**/*.rs.bk
+.DS_Store
+*.log

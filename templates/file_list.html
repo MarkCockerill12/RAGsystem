@@ -1,0 +1,10 @@
+{% for file in files %}
+<li class="p-2 rounded-lg bg-white/5 border border-white/5 flex justify-between items-center group animate-in fade-in slide-in-from-left-2 duration-300">
+  <span>{{ file }}</span>
+  <span class="text-[10px] bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded uppercase tracking-wider">Indexed</span>
+</li>
+{% else %}
+<li class="p-2 rounded-lg bg-white/5 border border-white/5 text-gray-500 italic">
+    No files indexed yet
+</li>
+{% endfor %}

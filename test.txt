@@ -1,0 +1,8 @@
+The RAG (Retrieval-Augmented Generation) system uses Rust, Axum, and SQLite.
+It features a semantic chunking strategy that splits at sentence boundaries.
+The system is agentic, meaning the LLM can use tools to search for information.
+This test document contains information about the system architecture for local verification.
+Rust is known for memory safety and performance, making it ideal for high-speed AI applications.
+SQLite with WAL mode enables concurrent reading and writing, which is great for this multi-user web app.
+HTMX and Tailwind CSS are used for the frontend to keep it lightweight and dynamic.
+Groq provides ultra-fast LLM inference, perfect for real-time chat experiences.

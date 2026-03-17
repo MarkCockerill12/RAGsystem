@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RAG System</title>
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      body {
+        font-family: "Inter", sans-serif;
+      }
+      .glass {
+        background: rgba(255, 255, 255, 0.05);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+      }
+    </style>
+  </head>
+  <body class="bg-[#0a0a0a] text-gray-100 min-h-screen flex flex-col">
+    <!-- Header -->
+    <header
+      class="p-6 border-b border-white/10 flex justify-between items-center"
+    >
+      <h1 class="text-2xl font-bold tracking-tight">
+        RAG<span class="text-blue-500">system</span>
+      </h1>
+      <div class="flex items-center gap-4">
+        <div class="flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+          <span class="text-sm text-gray-400">{{ status }}</span>
+        </div>
+        <button 
+          hx-post="/clear" 
+          hx-target="#upload-status"
+          class="text-xs bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 px-3 py-1.5 rounded-lg transition-colors"
+        >
+          Reset System
+        </button>
+      </div>
+    </header>
+
+    <main class="flex-1 flex flex-col lg:flex-row p-6 gap-6">
+      <!-- Sidebar: Upload -->
+      <aside class="w-full lg:w-96 flex flex-col gap-6">
+        <div class="glass rounded-2xl p-6">
+          <h2 class="text-lg font-semibold mb-4 text-white">
+            Upload Documents
+          </h2>
+          <form hx-post="/upload" hx-target="#upload-status" hx-encoding="multipart/form-data">
+            <div
+              class="border-2 border-dashed border-white/20 rounded-xl p-8 text-center hover:border-blue-500/50 transition-colors cursor-pointer"
+              id="upload-zone"
+              onclick="document.getElementById('file-input').click()"
+            >
+              <p class="text-sm text-gray-400">
+                Drag & drop files here or click to browse
+              </p>
+              <p class="text-xs text-gray-500 mt-2">PDF, TXT, DOCX (Max 10MB)</p>
+              <input
+                type="file"
+                id="file-input"
+                class="hidden"
+                multiple
+                name="files"
+                onchange="this.form.requestSubmit()"
+              />
+            </div>
+            <button type="submit" class="hidden">Upload</button>
+          </form>
+          <div id="upload-status" class="mt-4"></div>
+        </div>
+
+        <div class="glass rounded-2xl p-6 flex-1">
+          <h2 class="text-lg font-semibold mb-4 text-white">Indexed Files</h2>
+          <ul id="file-list" 
+              class="space-y-2 text-sm text-gray-400"
+              hx-get="/files"
+              hx-trigger="file-uploaded from:body">
+            {% for file in files %}
+            <li class="p-2 rounded-lg bg-white/5 border border-white/5 flex justify-between items-center group">
+              <span>{{ file }}</span>
+              <span class="text-[10px] bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded uppercase tracking-wider">Indexed</span>
+            </li>
+            {% else %}
+            <li class="p-2 rounded-lg bg-white/5 border border-white/5 text-gray-500 italic">
+              No files indexed yet
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+      </aside>
+
+      <!-- Main Content: Chat -->
+      <section class="flex-1 flex flex-col glass rounded-2xl overflow-hidden">
+        <div id="chat-messages" class="flex-1 p-6 overflow-y-auto space-y-4">
+          <div
+            class="bg-blue-600/10 border border-blue-500/20 p-4 rounded-xl max-w-[80%]"
+          >
+            <p class="text-sm">
+              Hello! Upload some documents and I'll help you answer questions
+              based on their content.
+            </p>
+          </div>
+        </div>
+
+        <div class="p-6 border-t border-white/10">
+          <form
+            hx-post="/chat"
+            hx-target="#chat-messages"
+            hx-swap="beforeend"
+            hx-indicator="#chat-spinner"
+            hx-on::after-request="this.reset()"
+            class="flex gap-4"
+          >
+            <input
+              type="text"
+              name="query"
+              placeholder="Ask a question..."
+              class="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500 transition-colors"
+            />
+            <button
+              type="submit"
+              class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-3 rounded-xl transition-colors"
+            >
+              Send
+            </button>
+          </form>
+          <div id="chat-spinner" class="htmx-indicator text-center py-2">
+            <span class="text-sm text-gray-400 animate-pulse">Thinking...</span>
+          </div>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>
