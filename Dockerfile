@@ -21,7 +21,7 @@ COPY . .
 RUN cargo build --release
 
 # Runtime Stage
-FROM debian:bookworm-slim
+FROM debian:trixie-slim
 
 RUN apt-get update && apt-get install -y \
     openssl \
