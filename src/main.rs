@@ -18,13 +18,16 @@ use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::services::ServeDir;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-const SYSTEM_PROMPT: &str = "You are a document Q&A assistant. You MUST use the search_documents tool to look up information before answering ANY question. NEVER answer from your own knowledge. After receiving tool results, synthesize a clear answer using ONLY that context. If the tool returns no relevant results, say: 'I could not find relevant information in the uploaded documents.'";
+const SYSTEM_PROMPT: &str = "You are an agentic RAG (Retrieval-Augmented Generation) system built with Rust (Axum, SQLite). 'RAG' stands for Retrieval-Augmented Generation. This system features semantic chunking and a hybrid search engine. You MUST use the search_documents tool to look up information before answering ANY question. If a question is about the system itself, use this background info. If a question has multiple parts, perform multiple separate searches. After receiving tool results, synthesize a concise and highly accurate answer using ONLY the retrieved context. Do not waste tokens on filler; be extremely precise.";
+const PRIMARY_MODEL: &str = "llama-3.3-70b-versatile";
+const FALLBACK_MODEL: &str = "llama-4-scout-17b-instruct";
 
 #[derive(Template)]
 #[template(path = "index.html")]
 struct IndexTemplate {
     status: String,
     files: Vec<String>,
+    primary_model: String,
 }
 
 #[derive(Template)]
@@ -96,7 +99,7 @@ impl EmbeddingModel {
         let mask = mask.to_dtype(embeddings.dtype())?.unsqueeze(2)?; 
         let sum_embeddings = embeddings.broadcast_mul(&mask)?.sum(1)?;
         let sum_mask = mask.sum(1)?;
-        let embeddings = (sum_embeddings / sum_mask)?;
+        let embeddings = sum_embeddings.broadcast_div(&sum_mask)?;
         let embeddings = embeddings.get(0)?;
         
         // L2 Normalization
@@ -301,6 +304,7 @@ async fn index(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     IndexTemplate {
         status: "System Ready".to_string(),
         files,
+        primary_model: PRIMARY_MODEL.to_string(),
     }
 }
 
@@ -316,7 +320,7 @@ async fn clear_index(State(state): State<Arc<AppState>>) -> impl IntoResponse {
             tracing::info!("System database cleared.");
             (
                 [("HX-Trigger", "file-uploaded")],
-                Html("<p class='text-yellow-500 text-sm'>System reset successfully!</p>"),
+                Html("<p class='text-yellow-500 text-sm'>Context reset successfully!</p>"),
             ).into_response()
         }
         Err(e) => {
@@ -479,58 +483,118 @@ fn extract_text(data: &[u8], ext: &str) -> anyhow::Result<String> {
     match ext {
         "txt" => Ok(String::from_utf8_lossy(data).to_string()),
         "pdf" => Ok(pdf_extract::extract_text_from_mem(data)?),
-        "docx" => Ok("DOCX extraction placeholder".to_string()),
+        "docx" => {
+            use docx_rs::*;
+            let doc = read_docx(data).map_err(|e| anyhow::anyhow!("DOCX parse error: {}", e))?;
+            let mut text = String::new();
+
+            fn handle_paragraph(p: &Paragraph, out: &mut String) {
+                for p_child in &p.children {
+                    match p_child {
+                        ParagraphChild::Run(r) => {
+                            for r_child in &r.children {
+                                if let RunChild::Text(t) = r_child {
+                                    out.push_str(&t.text);
+                                }
+                            }
+                        }
+                        ParagraphChild::Hyperlink(h) => {
+                            for h_child in &h.children {
+                                if let ParagraphChild::Run(r) = h_child {
+                                    for r_child in &r.children {
+                                        if let RunChild::Text(t) = r_child {
+                                            out.push_str(&t.text);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                out.push('\n');
+            }
+
+            fn handle_table(t: &Table, out: &mut String) {
+                for row_child in &t.rows {
+                    let TableChild::TableRow(row) = row_child;
+                    for cell_child in &row.cells {
+                        let TableRowChild::TableCell(cell) = cell_child;
+                        for c_child in &cell.children {
+                            match c_child {
+                                TableCellContent::Paragraph(p) => handle_paragraph(p, out),
+                                TableCellContent::Table(inner_t) => handle_table(inner_t, out),
+                                _ => {}
+                            }
+                        }
+                        out.push_str(" | ");
+                    }
+                    out.push('\n');
+                }
+            }
+
+            for child in doc.document.children {
+                match child {
+                    DocumentChild::Paragraph(p) => handle_paragraph(&p, &mut text),
+                    DocumentChild::Table(t) => handle_table(&t, &mut text),
+                    _ => {}
+                }
+            }
+            Ok(text)
+        }
         _ => anyhow::bail!("Unsupported extension"),
     }
 }
 
-fn chunk_text(text: &str, target_chunk_size: usize, overlap_size: usize) -> Vec<String> {
-    let normalized: String = text.split_whitespace().collect::<Vec<&str>>().join(" ");
-    
-    // Split into sentences using a simple regex-like approach or common delimiters
-    // For a more robust solution, one could use a specialized crate, but this preserves the "Noir" bespoke feel.
-    let sentences: Vec<&str> = normalized
-        .split_inclusive(['.', '!', '?'])
+fn chunk_text(text: &str, target_chunk_size: usize, _overlap_size: usize) -> Vec<String> {
+    // Phase 5: Split by single newline to keep rows/lines as distinct structural units
+    let blocks: Vec<String> = text
+        .split('\n')
         .map(|s| s.trim())
         .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
         .collect();
 
     let mut chunks = Vec::new();
     let mut current_chunk = Vec::new();
     let mut current_length = 0;
 
-    let mut i = 0;
-    while i < sentences.len() {
-        let sentence = sentences[i];
-        current_chunk.push(sentence);
-        current_length += sentence.len();
-
-        if current_length >= target_chunk_size {
-            chunks.push(current_chunk.join(" "));
-
-            // Create overlap: find how many sentences from the end to keep for the next chunk
-            let mut overlap_buffer = Vec::new();
-            let mut overlap_len = 0;
-
-            for &s in current_chunk.iter().rev() {
-                if overlap_len + s.len() > overlap_size && !overlap_buffer.is_empty() {
-                    break;
-                }
-                overlap_buffer.insert(0, s);
-                overlap_len += s.len();
-            }
-
-            current_chunk = overlap_buffer;
-            current_length = overlap_len;
+    for block in blocks {
+        // If adding this block exceeds target size, push current chunk
+        if current_length + block.len() > target_chunk_size && !current_chunk.is_empty() {
+            chunks.push(current_chunk.join("\n"));
+            current_chunk.clear();
+            current_length = 0;
         }
-        i += 1;
+        
+        // If a single block is still too large (rare with \n split), split it further
+        if block.len() > target_chunk_size {
+            let sentences: Vec<&str> = block
+                .split_inclusive(['.', '!', '?'])
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+                .collect();
+            
+            for sentence in sentences {
+                if current_length + sentence.len() > target_chunk_size && !current_chunk.is_empty() {
+                    chunks.push(current_chunk.join(" "));
+                    current_chunk.clear();
+                    current_length = 0;
+                }
+                current_chunk.push(sentence.to_string());
+                current_length += sentence.len();
+            }
+        } else {
+            current_chunk.push(block.to_string());
+            current_length += block.len();
+        }
     }
 
     if !current_chunk.is_empty() {
-        chunks.push(current_chunk.join(" "));
+        chunks.push(current_chunk.join("\n"));
     }
 
-    chunks.into_iter().filter(|c| c.len() >= 50).collect()
+    chunks
 }
 
 async fn chat(
@@ -558,7 +622,10 @@ async fn chat(
         .unwrap_or_default();
     let mut iterations = 0;
     let max_iterations = 5;
-    let tool_use_fallback_re = regex::Regex::new(r#"<function=search_documents\s+\{"query":\s*"([^"]+)"\}>"#).unwrap();
+    let tool_use_fallback_re = regex::Regex::new(r#"(?i)<function=search_documents[^>]*>\{.*?"query":\s*"([^"]+)"#).unwrap();
+
+    let mut current_model = PRIMARY_MODEL.to_string();
+    let mut is_fallback = false;
 
     tracing::info!("Processing query: '{}'", form.query);
 
@@ -566,7 +633,7 @@ async fn chat(
         iterations += 1;
         
         let mut groq_request = GroqRequest {
-            model: "llama-3.3-70b-versatile".to_string(),
+            model: current_model.clone(),
             messages: messages.clone(),
             tools: Some(vec![GroqTool {
                 tool_type: "function".to_string(),
@@ -591,17 +658,98 @@ async fn chat(
             groq_request.tool_choice = None;
         }
 
-        let res = match client.post("https://api.groq.com/openai/v1/chat/completions")
-            .header("Authorization", format!("Bearer {}", state.groq_api_key))
-            .json(&groq_request)
-            .send()
-            .await {
-                Ok(r) => r,
-                Err(_) => return Html("<div class='bg-red-500/10 border border-red-500/20 p-4 rounded-xl max-w-[80%]'><p class='text-sm'>Error: API request failed.</p></div>").into_response(),
-            };
+        let mut retry_count = 0;
+        let max_retries = 3;
+        let mut res = None;
 
-        let body = res.text().await.unwrap_or_default();
-        tracing::debug!("Groq Raw Response: {}", body);
+        while retry_count <= max_retries {
+            let response = client.post("https://api.groq.com/openai/v1/chat/completions")
+                .header("Authorization", format!("Bearer {}", state.groq_api_key))
+                .json(&groq_request)
+                .send()
+                .await;
+
+            match response {
+                Ok(r) => {
+                    // Log Gas Gauge
+                    if let Some(tokens) = r.headers().get("x-ratelimit-remaining-tokens") {
+                        tracing::info!("Gas Gauge (Tokens): {}", tokens.to_str().unwrap_or("?"));
+                    }
+                    if let Some(requests) = r.headers().get("x-ratelimit-remaining-requests") {
+                        tracing::info!("Gas Gauge (Requests): {}", requests.to_str().unwrap_or("?"));
+                    }
+
+                    if r.status().as_u16() == 429 {
+                        let body = r.text().await.unwrap_or_default();
+                        tracing::warn!("Rate limit hit (429). Body: {}", body);
+                        
+                        // Check for Daily Limit (TPD/RPD)
+                        if body.contains("Daily limit") || body.contains("RPD") || body.contains("TPD") {
+                            if !is_fallback {
+                                tracing::info!("Daily limit reached. Switching to fallback model: {}", FALLBACK_MODEL);
+                                current_model = FALLBACK_MODEL.to_string();
+                                groq_request.model = current_model.clone();
+                                is_fallback = true;
+                                retry_count = 0; // Reset retries for the new model
+                                continue;
+                            } else {
+                                return Html("<div class='bg-red-500/10 border border-red-500/20 p-4 rounded-xl max-w-[80%]'><p class='text-sm'>Error: All models reached daily rate limits.</p></div>").into_response();
+                            }
+                        }
+
+                        // Check for Momentary Limit (TPM/RPM)
+                        if retry_count < max_retries {
+                            let wait_secs = if body.contains("retry-after") {
+                                // Simple extraction of "retry-after": "X.Xs" or similar
+                                if let Some(cap) = regex::Regex::new(r#"retry-after":\s*"([\d.]+)"#).unwrap().captures(&body) {
+                                    cap[1].parse::<f32>().unwrap_or(1.0).ceil() as u64
+                                } else {
+                                    1
+                                }
+                            } else {
+                                1
+                            };
+
+                            tracing::info!("Momentary limit hit. Retrying in {}s (Attempt {}/{})", wait_secs, retry_count + 1, max_retries);
+                            tokio::time::sleep(std::time::Duration::from_secs(wait_secs)).await;
+                            retry_count += 1;
+                            continue;
+                        } else {
+                            return Html("<div class='bg-red-500/10 border border-red-500/20 p-4 rounded-xl max-w-[80%]'><p class='text-sm'>Error: Too many retries for momentary rate limit.</p></div>").into_response();
+                        }
+                    }
+
+                    if !r.status().is_success() {
+                        let status = r.status();
+                        let body = r.text().await.unwrap_or_default();
+                        
+                        // Check if this is a tool use failure we can recover from
+                        if status.as_u16() == 400 {
+                            if let Ok(groq_err) = serde_json::from_str::<GroqResponse>(&body) {
+                                if groq_err.error.as_ref().map(|e| e.code.as_deref()) == Some(Some("tool_use_failed")) {
+                                    tracing::warn!("Caught 400 tool_use_failed, proceeding to fallback.");
+                                    res = Some((status, body)); // Use a tuple to pass body along
+                                    break;
+                                }
+                            }
+                        }
+
+                        tracing::error!("API Error ({}): {}", status, body);
+                        return Html(format!("<div class='bg-red-500/10 border border-red-500/20 p-4 rounded-xl max-w-[80%]'><p class='text-sm'>Error: API returned status {}. {}</p></div>", status, body)).into_response();
+                    }
+
+                    res = Some((r.status(), r.text().await.unwrap_or_default()));
+                    break;
+                }
+                Err(e) => {
+                    tracing::error!("Network error: {}", e);
+                    return Html("<div class='bg-red-500/10 border border-red-500/20 p-4 rounded-xl max-w-[80%]'><p class='text-sm'>Error: API request failed due to network error.</p></div>").into_response();
+                }
+            }
+        }
+
+        let (status, body) = res.unwrap();
+        tracing::debug!("Groq Raw Response ({}): {}", status, body);
 
         let groq_res: GroqResponse = match serde_json::from_str(&body) {
             Ok(r) => r,
@@ -625,7 +773,7 @@ async fn chat(
                             Ok(e) => e,
                             Err(_) => vec![0.0; 384],
                         };
-                        let context = retrieve_context(&state.db_pool, query_embedding).unwrap_or_default();
+                        let context = retrieve_context(&state.db_pool, query_embedding, extracted_query).unwrap_or_default();
                         let context_str = context.join("\n---\n");
                         
                         messages.push(GroqMessage {
@@ -666,7 +814,7 @@ async fn chat(
                         Err(_) => vec![0.0; 384],
                     };
 
-                    let context = retrieve_context(&state.db_pool, query_embedding).unwrap_or_default();
+                    let context = retrieve_context(&state.db_pool, query_embedding, query).unwrap_or_default();
                     let context_str = if context.is_empty() {
                         "No relevant results found.".to_string()
                     } else {
@@ -684,15 +832,16 @@ async fn chat(
         } else if let Some(content) = assistant_msg.content {
             let escaped_query = escape_html(&form.query);
             let escaped_content = escape_html(&content);
+            let model_badge = if is_fallback { "Llama 4 (Fallback)" } else { "Llama 3.3" };
             return Html(format!(
                 "<div class='bg-white/5 border border-white/10 p-4 rounded-xl max-w-[90%] ml-auto mb-4'>\
                     <p class='text-xs text-gray-500 mb-1'>You</p>\
                     <p class='text-sm'>{}</p>\
                 </div>\
                 <div class='bg-blue-600/10 border border-blue-500/20 p-4 rounded-xl max-w-[90%] mb-4'>\
-                    <p class='text-xs text-blue-400 mb-1'>Assistant (Agentic)</p>\
-                    <p class='text-sm'>{}</p>\
-                </div>", escaped_query, escaped_content)).into_response();
+                    <p class='text-xs text-blue-400 mb-1'>Assistant ({})</p>\
+                    <div class='text-sm prose prose-invert max-w-none'>{}</div>\
+                </div>", escaped_query, model_badge, escaped_content)).into_response();
         } else {
             break;
         }
@@ -704,6 +853,7 @@ async fn chat(
 fn retrieve_context(
     pool: &Pool<SqliteConnectionManager>,
     query_embedding: Vec<f32>,
+    query_text: &str,
 ) -> anyhow::Result<Vec<String>> {
     let conn = pool.get()?;
     
@@ -715,7 +865,6 @@ fn retrieve_context(
         let content: String = row.get(0)?;
         let embedding_bytes: Vec<u8> = row.get(1)?;
         
-        // Safer f32 deserialization to avoid alignment UB
         let embedding: Vec<f32> = embedding_bytes
             .chunks_exact(4)
             .map(|chunk| {
@@ -728,11 +877,22 @@ fn retrieve_context(
         Ok((content, embedding))
     })?;
 
+    let query_lower = query_text.to_lowercase();
     let mut similarities: Vec<(String, f32)> = Vec::new();
+
     for row in rows {
         let (content, embedding) = row?;
-        let similarity = cosine_similarity(&query_embedding, &embedding);
-        similarities.push((content, similarity));
+        let semantic_similarity = cosine_similarity(&query_embedding, &embedding);
+        
+        // Hybrid Search: Keyword Boosting
+        // If the query text (or a significant part of it) appears literally in the chunk, boost it.
+        let mut final_score = semantic_similarity;
+        if content.to_lowercase().contains(&query_lower) && query_lower.len() > 1 {
+            final_score += 0.5; // Significant boost for literal matches
+            tracing::debug!("Keyword boost applied (+0.5) for query '{}'", query_text);
+        }
+
+        similarities.push((content, final_score));
     }
     
     if !similarities.is_empty() {
@@ -740,14 +900,15 @@ fn retrieve_context(
         tracing::debug!("Found {} similarities. Max score: {:.4}", similarities.len(), max_score);
     }
 
-    similarities.retain(|(_, score)| *score > 0.4);
+    // Retain matches with high scores (after boost) or reasonable similarity
+    similarities.retain(|(_, score)| *score > 0.05);
     similarities.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
     
-    for (i, (content, score)) in similarities.iter().take(3).enumerate() {
+    for (i, (content, score)) in similarities.iter().take(10).enumerate() {
         tracing::debug!("Top result {}: score={:.4}, preview='{}'", i, score, &content[..content.len().min(80)]);
     }
 
-    Ok(similarities.into_iter().take(3).map(|(c, _)| c).collect())
+    Ok(similarities.into_iter().take(10).map(|(c, _)| c).collect())
 }
 
 fn escape_html(s: &str) -> String {

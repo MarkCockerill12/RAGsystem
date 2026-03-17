@@ -1,84 +1,88 @@
 # 📡 Agentic RAG System
 
-A premium, high-performance **Retrieval-Augmented Generation (RAG)** web application engineered with **Rust**, **HTMX**, and **Groq**. This system transforms your local documents into an interactive knowledge base with agentic tool-use capabilities.
+A high-performance **Retrieval-Augmented Generation (RAG)** web application engineered with **Rust**, **HTMX**, and **Groq**. This system transforms local documents into an interactive knowledge base with autonomous agentic capabilities.
 
 ---
 
 ## ✨ Features
 
-- **🚀 Lightning Fast Inference**: Leveraging **Groq API** with Llama 3.3 70B for near-instant responses.
-- **🛡️ Private Local Embeddings**: Uses `sentence-transformers/all-MiniLM-L6-v2` via **HuggingFace Candle**.
-- **🤖 Agentic Reasoning**: The system doesn't just retrieve; it uses the `search_documents` tool to intelligently query its own knowledge base.
+- **🚀 Dual-Model Resilience**: Intelligent fallback between Llama 3.3 70B and Llama 4 Scout to circumvent rate limits.
+- **🛡️ Private Local Embeddings**: Built-in 384-dimensional vectorization using `all-MiniLM-L6-v2` via **HuggingFace Candle**.
+- **🤖 Agentic Reasoning**: An autonomous loop that uses the `search_documents` tool to query the local index before synthesizing answers.
 - **🏗️ Industrial Tech Stack**:
-  - **Backend**: Axum (high-concurrency web framework).
-  - **Database**: SQLite with WAL mode for efficient concurrent read/writes.
-  - **Text Extraction**: Support for PDF and TXT (DOCX placeholder).
-- **💅 Premium UI/UX**:
-  - **HTMX**: For a seamless, SPA-like feel without JavaScript fatigue.
-  - **Tailwind CSS**: Sleek, modern design with loading indicators and responsive layouts.
-  - **Real-time Feedback**: "Thinking..." indicators and dynamic file status updates.
+  - **Backend**: Axum (high-concurrency asynchronous web framework).
+  - **Database**: SQLite with **WAL mode** for high-throughput concurrent access.
+  - **Frontend**: HTMX for reactive, SPA-like interactions without the complexity of modern JS frameworks.
+- **💅 Noir Aesthetic**: A premium, terminal-inspired dark UI powered by Tailwind CSS.
 
 ---
 
-## 🛠️ Prerequisites
+## 🛠️ Infrastructure & Resilience
 
-- **Rust Toolchain**: [Install Rust](https://rustup.rs/)
-- **Groq API Key**: Obtain from [Groq Console](https://console.groq.com/)
+### API Fallback & Retry Strategy
+
+This system is designed to handle the constraints of the **Groq Free Tier** gracefully:
+
+1. **Primary Model**: Defaults to `llama-3.3-70b-versatile` for high-reasoning tasks.
+2. **Momentary Limits (TPM/RPM)**: Automatically parses `retry-after` headers and performs jittered retries (up to 3 times) before failing.
+3. **Daily Limits (TPD/RPD)**: Upon detecting a daily quota exhaustion, the system immediately switches to `llama-4-scout-17b-instruct` to maintain service continuity.
+4. **Gas Gauge Monitoring**: Real-time logging of `x-ratelimit-remaining` headers provides visibility into API consumption.
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Getting Started Locally
 
-### 1. Configure Environment
+### 1. Prerequisites
 
-Create a `.env` file in the root directory:
+- **Rust Toolchain**: [Install via rustup](https://rustup.rs/) (Ensure you have `cargo` and `rustc` stable).
+- **Groq API Key**: Obtain a free-tier key from the [Groq Console](https://console.groq.com/).
+- **System Dependencies**:
+  - **Windows**: Build tools for Visual Studio (C++ workload) are required for compiling certain dependencies like `rusqlite`.
+  - **Linux**: `sudo apt-get install pkg-config libssl-dev build-essential`
+  - **macOS**: `brew install openssl pkg-config`
+- **Environment**: A `.env` file in the root directory (see below).
+
+### 2. Configure Environment
+
+Create a `.env` file in the project root:
 
 ```env
-GROQ_API_KEY=your_key_here
+GROQ_API_KEY=gsk_your_key_here
 PORT=3000
 ```
 
-### 2. Launch the Application
+### 3. Launch the Application
 
 ```bash
 cargo run --release
 ```
 
-Access the dashboard at `http://127.0.0.1:3000`.
+Access the dashboard at `http://localhost:3000`.
 
 ---
 
-## 📖 How It Works
+## 📖 Architectural Overview
 
-1.  **Ingestion**: Files are uploaded through a multipart form.
-2.  **Processing**: The backend extracts text and chunks it using a semantic sliding window strategy.
-3.  **Embedding**: Each chunk is transformed into a 384-dimensional vector using `all-MiniLM-L6-v2`.
-4.  **Indexing**: Vectors and content are stored in a local SQLite database (`rag.db`).
-5.  **Retrieval**: When you ask a question, the Agentic LLM generates a search query, which is cross-referenced against your index using **Cosine Similarity**.
-6.  **Synthesis**: The LLM receives the most relevant context and synthesizes a concise, accurate answer.
+1.  **Ingestion**: Documents (PDF, TXT, DOCX) are processed and cleaned server-side.
+2.  **Chunking**: Text is split using a semantic sliding window to preserve context across boundaries.
+3.  **Vectorization**: Chunks are embedded into a vector space using a local BERT model (MiniLM).
+4.  **Retrieval**: Queries trigger a semantic search against the SQLite index using Cosine Similarity.
+5.  **Synthesis**: The agentic reasoning loop evaluates retrieved context and generates a precise response, citing source material where applicable.
+
+---
 
 ## 🌍 Deployment
 
-This project is optimized for **Render**'s free tier.
+The system is optimized for containerized environments like **Render**.
 
-### Why Render?
+### Render Configuration
 
-- **Per-Project Limits**: Each app gets its own **512MB RAM**, which is plenty for this Rust backend.
-- **Smart "Sleep"**: Apps spin down after 15 mins of inactivity, preserving your **750 free monthly hours**. This allows you to host dozens of projects on one account!
-- **Docker Ready**: The included `Dockerfile` bakes the embedding model into the image, ensuring **instant cold starts** so you don't have to wait for models to download when the server wakes up.
-
-### Deployment Steps
-
-1. Push your code to a GitHub repository.
-2. Sign up/Log in to [Render](https://render.com/).
-3. Click **New +** > **Web Service**.
-4. Connect your repo.
-5. Render will automatically detect the `Dockerfile`.
-6. Add your `GROQ_API_KEY` in the **Environment Variables** section.
-7. Click **Deploy**.
+- **RAM**: 512MB (Free Tier compatible)
+- **Startup**: The included `Dockerfile` pre-downloaded the embedding model, ensuring sub-second cold starts.
+- **Persistence**: Uses an ephemeral SQLite database; for production, consider mounting a volume or using an external DB provider.
 
 ---
 
 ## 📄 License
 
-This project is open-source and intended for educational and professional demonstration purposes.
+This project is open-source and intended for professional demonstration and educational purposes.

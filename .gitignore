@@ -1,6 +1,8 @@
 /target/
 /.env
-/rag.db
+/rag.db*
+/rustup-init.exe
 **/*.rs.bk
 .DS_Store
 *.log
+*.exe

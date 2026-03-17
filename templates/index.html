@@ -39,7 +39,7 @@
           hx-target="#upload-status"
           class="text-xs bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 px-3 py-1.5 rounded-lg transition-colors"
         >
-          Reset System
+          Reset Context
         </button>
       </div>
     </header>
@@ -120,6 +120,7 @@
             <input
               type="text"
               name="query"
+              autocomplete="off"
               placeholder="Ask a question..."
               class="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500 transition-colors"
             />
@@ -136,5 +137,52 @@
         </div>
       </section>
     </main>
+    
+    <script>
+      const chatForm = document.querySelector('form[hx-post="/chat"]');
+      const chatInput = chatForm.querySelector('input[name="query"]');
+      let history = [];
+      let historyIndex = -1;
+      let tempInput = "";
+
+      chatInput.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowUp') {
+          if (historyIndex === -1) {
+            tempInput = chatInput.value;
+          }
+          if (historyIndex < history.length - 1) {
+            e.preventDefault();
+            historyIndex++;
+            chatInput.value = history[history.length - 1 - historyIndex];
+          }
+        } else if (e.key === 'ArrowDown') {
+          if (historyIndex > -1) {
+            e.preventDefault();
+            historyIndex--;
+            if (historyIndex === -1) {
+              chatInput.value = tempInput;
+            } else {
+              chatInput.value = history[history.length - 1 - historyIndex];
+            }
+          }
+        }
+      });
+
+      chatForm.addEventListener('htmx:afterRequest', (e) => {
+        if (e.detail.successful) {
+          const query = new FormData(chatForm).get('query');
+          if (query && query.trim() !== "" && history[history.length - 1] !== query) {
+            history.push(query);
+          }
+          historyIndex = -1;
+          tempInput = "";
+          chatInput.value = "";
+          chatInput.focus();
+        }
+      });
+
+      // Ensure focus on load
+      window.onload = () => chatInput.focus();
+    </script>
   </body>
 </html>
