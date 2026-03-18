@@ -19,76 +19,89 @@
         backdrop-filter: blur(10px);
         border: 1px solid rgba(255, 255, 255, 0.1);
       }
+      .custom-scrollbar::-webkit-scrollbar {
+        width: 4px;
+      }
+      .custom-scrollbar::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      .custom-scrollbar::-webkit-scrollbar-thumb {
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 10px;
+      }
+      .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+        background: rgba(255, 255, 255, 0.2);
+      }
     </style>
   </head>
-  <body class="bg-[#0a0a0a] text-gray-100 min-h-screen flex flex-col">
+  <body class="bg-[#0a0a0a] text-gray-100 h-screen overflow-hidden flex flex-col">
     <!-- Header -->
     <header
-      class="p-6 border-b border-white/10 flex justify-between items-center"
+      class="p-3 px-6 border-b border-white/10 flex justify-between items-center bg-[#0d0d0d]/80 backdrop-blur-md z-10"
     >
-      <h1 class="text-2xl font-bold tracking-tight">
-        RAG<span class="text-blue-500">system</span>
+      <h1 class="text-xl font-bold tracking-tight">
+        Agentic RAG<span class="text-blue-500">system</span>
       </h1>
       <div class="flex items-center gap-4">
         <div class="flex items-center gap-2">
           <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
-          <span class="text-sm text-gray-400">{{ status }}</span>
+          <span class="text-xs text-gray-400">{{ status }}</span>
         </div>
         <button 
           hx-post="/clear" 
           hx-target="#upload-status"
-          class="text-xs bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 px-3 py-1.5 rounded-lg transition-colors"
+          class="text-[10px] bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 px-2.5 py-1 rounded-lg transition-colors"
         >
           Reset Context
         </button>
       </div>
     </header>
 
-    <main class="flex-1 flex flex-col lg:flex-row p-6 gap-6">
+    <main class="flex-1 flex flex-col lg:flex-row p-4 gap-4 overflow-hidden">
       <!-- Sidebar: Upload -->
-      <aside class="w-full lg:w-96 flex flex-col gap-6">
-        <div class="glass rounded-2xl p-6">
-          <h2 class="text-lg font-semibold mb-4 text-white">
-            Upload Documents
+      <aside class="w-full lg:w-80 flex flex-col gap-4 overflow-hidden">
+        <div class="glass rounded-2xl p-4 flex-shrink-0">
+          <h2 class="text-base font-semibold mb-3 text-white">
+            Upload
           </h2>
           <form hx-post="/upload" hx-target="#upload-status" hx-encoding="multipart/form-data">
             <div
-              class="border-2 border-dashed border-white/20 rounded-xl p-8 text-center hover:border-blue-500/50 transition-colors cursor-pointer"
+              class="border-2 border-dashed border-white/10 rounded-xl p-4 text-center hover:border-blue-500/50 transition-colors cursor-pointer"
               id="upload-zone"
               onclick="document.getElementById('file-input').click()"
             >
-              <p class="text-sm text-gray-400">
-                Drag & drop files here or click to browse
+              <p class="text-xs text-gray-400">
+                Drop files or click (PDF, TXT, DOCX, MD)
               </p>
-              <p class="text-xs text-gray-500 mt-2">PDF, TXT, DOCX (Max 10MB)</p>
               <input
                 type="file"
                 id="file-input"
                 class="hidden"
                 multiple
                 name="files"
+                accept=".pdf,.txt,.docx,.md"
                 onchange="this.form.requestSubmit()"
               />
             </div>
             <button type="submit" class="hidden">Upload</button>
           </form>
-          <div id="upload-status" class="mt-4"></div>
+          <div id="upload-status" class="mt-2 text-[10px]"></div>
         </div>
 
-        <div class="glass rounded-2xl p-6 flex-1">
-          <h2 class="text-lg font-semibold mb-4 text-white">Indexed Files</h2>
+        <div class="glass rounded-2xl p-4 flex-1 overflow-hidden flex flex-col">
+          <h2 class="text-base font-semibold mb-3 text-white text-sm">Indexed Files</h2>
           <ul id="file-list" 
-              class="space-y-2 text-sm text-gray-400"
+              class="flex-1 overflow-y-auto space-y-1.5 text-xs text-gray-400 pr-1 custom-scrollbar"
               hx-get="/files"
               hx-trigger="file-uploaded from:body">
             {% for file in files %}
             <li class="p-2 rounded-lg bg-white/5 border border-white/5 flex justify-between items-center group">
-              <span>{{ file }}</span>
-              <span class="text-[10px] bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded uppercase tracking-wider">Indexed</span>
+              <span class="truncate pr-2">{{ file }}</span>
+              <span class="flex-shrink-0 text-[8px] bg-blue-500/20 text-blue-400 px-1 py-0.5 rounded uppercase tracking-wider">Indexed</span>
             </li>
             {% else %}
             <li class="p-2 rounded-lg bg-white/5 border border-white/5 text-gray-500 italic">
-              No files indexed yet
+              Empty
             </li>
             {% endfor %}
           </ul>
@@ -96,53 +109,58 @@
       </aside>
 
       <!-- Main Content: Chat -->
-      <section class="flex-1 flex flex-col glass rounded-2xl overflow-hidden">
-        <div id="chat-messages" class="flex-1 p-6 overflow-y-auto space-y-4">
+      <section class="flex-1 flex flex-col glass rounded-2xl overflow-hidden relative">
+        <div id="chat-messages" class="flex-1 p-4 overflow-y-auto space-y-4 scroll-smooth pr-6 custom-scrollbar">
           <div
-            class="bg-blue-600/10 border border-blue-500/20 p-4 rounded-xl max-w-[80%]"
+            class="bg-blue-600/10 border border-blue-500/20 p-4 rounded-xl max-w-[85%]"
           >
             <p class="text-sm">
-              Hello! Upload some documents and I'll help you answer questions
-              based on their content.
+              Hello! Upload documents to start searching. I'm the Agentic RAGsystem.
             </p>
           </div>
         </div>
 
-        <div class="p-6 border-t border-white/10">
+        <div class="p-4 border-t border-white/10 bg-[#0d0d0d]/40 backdrop-blur-sm">
           <form
             hx-post="/chat"
             hx-target="#chat-messages"
             hx-swap="beforeend"
             hx-indicator="#chat-spinner"
             hx-on::after-request="this.reset()"
-            class="flex gap-4"
+            class="flex gap-3"
           >
             <input
               type="text"
               name="query"
               autocomplete="off"
               placeholder="Ask a question..."
-              class="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500 transition-colors"
+              class="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-blue-500 transition-colors"
             />
             <button
               type="submit"
-              class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-3 rounded-xl transition-colors"
+              class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-5 py-2.5 rounded-xl text-sm transition-colors shadow-lg shadow-blue-600/20"
             >
               Send
             </button>
           </form>
-          <div id="chat-spinner" class="htmx-indicator text-center py-2">
-            <span class="text-sm text-gray-400 animate-pulse">Thinking...</span>
+          <div id="chat-spinner" class="htmx-indicator absolute top-4 right-8">
+            <div class="flex items-center gap-2 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10 shadow-xl">
+                <span class="w-1.5 h-1.5 bg-blue-500 rounded-full animate-ping"></span>
+                <span class="text-[10px] text-blue-400 font-medium tracking-wide font-mono">THINKING</span>
+            </div>
           </div>
         </div>
       </section>
     </main>
     
     <!-- Footer -->
-    <footer class="p-4 border-t border-white/5 flex justify-center items-center">
-        <p class="text-[10px] text-gray-600 uppercase tracking-[0.2em]">
-            Active Engine: <span class="text-blue-500/50">{{ primary_model }}</span> &bull; 
-            Status: <span class="text-green-500/40 italic font-medium">Ready</span>
+    <footer class="p-2 px-6 border-t border-white/5 flex justify-between items-center bg-[#080808]">
+        <p class="text-[9px] text-gray-600 uppercase tracking-[0.2em] font-medium">
+            Project: <span class="text-gray-400">Agentic RAG</span>
+        </p>
+        <p class="text-[9px] text-gray-600 uppercase tracking-[0.2em] font-medium text-right">
+            Engine: <span class="text-blue-500/50">{{ primary_model }}</span> &bull; 
+            Status: <span class="text-green-500/40 italic">Ready</span>
         </p>
     </footer>
 
@@ -190,7 +208,22 @@
       });
 
       // Ensure focus on load
-      window.onload = () => chatInput.focus();
+      window.onload = () => {
+        chatInput.focus();
+        scrollToBottom();
+      };
+
+      function scrollToBottom() {
+        const chatMessages = document.getElementById('chat-messages');
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+      }
+
+      // Scroll on new content from HTMX
+      document.body.addEventListener('htmx:afterOnLoad', (e) => {
+        if (e.detail.target.id === 'chat-messages') {
+          scrollToBottom();
+        }
+      });
     </script>
   </body>
 </html>

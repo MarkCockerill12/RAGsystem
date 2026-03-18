@@ -6,13 +6,13 @@ A high-performance **Retrieval-Augmented Generation (RAG)** web application engi
 
 ## ✨ Features
 
-- **🚀 Dual-Model Resilience**: Intelligent fallback between Llama 3.3 70B and Llama 4 Scout to circumvent rate limits.
+- **🚀 Dual-Model Resilience**: Intelligent fallback between Llama 3.3 70B and Llama 3.1 8B to circumvent rate limits.
 - **🛡️ Private Local Embeddings**: Built-in 384-dimensional vectorization using `all-MiniLM-L6-v2` via **HuggingFace Candle**.
 - **🤖 Agentic Reasoning**: An autonomous loop that uses the `search_documents` tool to query the local index before synthesizing answers.
 - **🏗️ Industrial Tech Stack**:
-  - **Backend**: Axum (high-concurrency asynchronous web framework).
-  - **Database**: SQLite with **WAL mode** for high-throughput concurrent access.
-  - **Frontend**: HTMX for reactive, SPA-like interactions without the complexity of modern JS frameworks.
+- **Backend**: Axum (high-concurrency asynchronous web framework).
+- **Database**: SQLite with **WAL mode** for high-throughput concurrent access.
+- **Frontend**: HTMX for reactive, SPA-like interactions without the complexity of modern JS frameworks.
 - **💅 Noir Aesthetic**: A premium, terminal-inspired dark UI powered by Tailwind CSS.
 
 ---
@@ -24,9 +24,10 @@ A high-performance **Retrieval-Augmented Generation (RAG)** web application engi
 This system is designed to handle the constraints of the **Groq Free Tier** gracefully:
 
 1. **Primary Model**: Defaults to `llama-3.3-70b-versatile` for high-reasoning tasks.
-2. **Momentary Limits (TPM/RPM)**: Automatically parses `retry-after` headers and performs jittered retries (up to 3 times) before failing.
-3. **Daily Limits (TPD/RPD)**: Upon detecting a daily quota exhaustion, the system immediately switches to `llama-4-scout-17b-instruct` to maintain service continuity.
-4. **Gas Gauge Monitoring**: Real-time logging of `x-ratelimit-remaining` headers provides visibility into API consumption.
+2. **Momentary Limits (TPM/RPM)**: Automatically parses `retry-after` headers and performs jittered retries (up to 10 times) before failing.
+3. **Daily Limits (TPD/RPD)**: Upon detecting a daily quota exhaustion, the system immediately switches to `llama-3.1-8b-instant` to maintain service continuity.
+4. **Agentic Tool Fallback**: Robust regex-based parsing to catch and fix `tool_use_failed` errors from the API.
+5. **Identifier Boosting**: Specialized retrieval logic that prioritizes short, technical identifiers (e.g., `2c`, `1a`) for precise lookup.
 
 ## 🚀 Deployment & Demo
 
