@@ -33,7 +33,7 @@ This system is designed to handle the constraints of the **Groq Free Tier** grac
 
 ### 🌐 Live Website
 
-You can access the hosted version of the system here: **[PLACEHOLDER: Enter your Render URL here]**
+You can access the hosted version of the system here: **https://agentic-rag-n4wm.onrender.com/**
 
 ---
 
