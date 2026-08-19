@@ -29,9 +29,9 @@ VITAL INTELLIGENCE RULES:\n\
 SEARCH STRATEGY:\n\
 6. Use the `search_documents` tool to find information. If your first search is too narrow, try a broader search.\n\
 7. If the user mentions a specific file, prioritize searching in that file.";
-const PRIMARY_MODEL: &str = "llama-3.3-70b-versatile";
-const FALLBACK_MODEL: &str = "llama-3.1-8b-instant";
-const FALLBACK_BRANDING: &str = "Llama Scout";
+const PRIMARY_MODEL: &str = "openai/gpt-oss-20b";
+const FALLBACK_MODEL: &str = "openai/gpt-oss-20b";
+const FALLBACK_BRANDING: &str = "GPT OSS 20B";
 
 
 use std::sync::OnceLock;

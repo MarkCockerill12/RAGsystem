@@ -6,7 +6,7 @@ A high-performance **Retrieval-Augmented Generation (RAG)** web application engi
 
 ## ✨ Features
 
-- **🚀 Dual-Model Resilience**: Intelligent fallback between Llama 3.3 70B and Llama 3.1 8B to circumvent rate limits.
+- **🚀 Resilience**: Uses GPT OSS 20B, with retry strategies to circumvent rate limits.
 - **🛡️ Private Local Embeddings**: Built-in 384-dimensional vectorization using `all-MiniLM-L6-v2` via **HuggingFace Candle**.
 - **🤖 Agentic Reasoning**: An autonomous loop that uses the `search_documents` tool to query the local index before synthesizing answers.
 - **🏗️ Industrial Tech Stack**:
@@ -23,9 +23,8 @@ A high-performance **Retrieval-Augmented Generation (RAG)** web application engi
 
 This system is designed to handle the constraints of the **Groq Free Tier** gracefully:
 
-1. **Primary Model**: Defaults to `llama-3.3-70b-versatile` for high-reasoning tasks.
+1. **Primary Model**: Defaults to `openai/gpt-oss-20b` for tasks.
 2. **Momentary Limits (TPM/RPM)**: Automatically parses `retry-after` headers and performs jittered retries (up to 10 times) before failing.
-3. **Daily Limits (TPD/RPD)**: Upon detecting a daily quota exhaustion, the system immediately switches to `llama-3.1-8b-instant` to maintain service continuity.
 4. **Agentic Tool Fallback**: Robust regex-based parsing to catch and fix `tool_use_failed` errors from the API.
 5. **Identifier Boosting**: Specialized retrieval logic that prioritizes short, technical identifiers (e.g., `2c`, `1a`) for precise lookup.
 
