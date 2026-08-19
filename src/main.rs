@@ -822,7 +822,7 @@ async fn chat(State(state): State<Arc<AppState>>, Form(form): Form<ChatQuery>) -
                 }
             }
 
-            let assistant_name = if is_fallback { FALLBACK_BRANDING } else { "Llama 3.3" };
+            let assistant_name = if is_fallback { FALLBACK_BRANDING } else { "GPT OSS 20B" };
             return Html(format!(
                 r#"<div class="flex flex-col gap-4 w-full">
                     <div class="flex justify-end">
