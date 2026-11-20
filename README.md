@@ -99,4 +99,4 @@ The system is optimized for containerized environments like **Render**.
 
 ## 📄 License
 
-This project is open-source and intended for professional demonstration and educational purposes.
+MIT. See [LICENSE](LICENSE).
